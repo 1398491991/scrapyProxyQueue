@@ -1,2 +1,2 @@
 # scrapyProxyQueue
-good good study,day day up,haha!
+#待完善，未测试
