@@ -1,4 +1,7 @@
 #coding=utf-8
+"""
+基于python 自身 Queue
+"""
 from scrapy.downloadermiddlewares.retry import RetryMiddleware
 import logging
 from scrapy.exceptions import NotConfigured
