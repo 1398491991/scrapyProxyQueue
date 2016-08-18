@@ -45,7 +45,7 @@ class RedisQueue:
         return self._redis_conn.blpop(self._redis_key,timeout)
 
     def _put(self,item):
-        return self._redis_conn.rpushx(self._redis_key,item)
+        return self._redis_conn.rpush(self._redis_key,item)
 
     def r_qsize(self):
         """ 返回的有序集合成员的数量 """
