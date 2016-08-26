@@ -25,7 +25,7 @@ class RedisQueueTimeOut(Exception):
     pass
 
 
-class RedisQueue:
+class RedisQueue(object):
     """先进先出队列"""
     def __init__(self,max_size,redis_conn,redis_key_default="RedisQueue"):
         """
@@ -39,27 +39,46 @@ class RedisQueue:
         assert isinstance(self._redis_key,str) is True,"Only allow 'redis_key' type is str"
         self._redis_conn=redis_conn # 一个 redis 的连接
 
-        self._not_full = _threading.Condition()
+        # 参见 Queue init
+        self.mutex = _threading.Lock()
+        self._not_full = _threading.Condition(self.mutex)
+        self._not_empty = _threading.Condition(self.mutex)
+
 
     def _get(self,timeout=0):
         return self._redis_conn.blpop(self._redis_key,timeout)
 
     def _put(self,item):
-        return self._redis_conn.rpush(self._redis_key,item)
+        self._redis_conn.rpush(self._redis_key,item)
 
     def r_qsize(self):
         """ 返回的有序集合成员的数量 """
-        return self._redis_conn.llen(self._redis_key)
+        self.mutex.acquire()
+        size=self._redis_conn.llen(self._redis_key)
+        self.mutex.release()
+        return size
+
+    def r_empty(self):
+        """判断队列是否为空  是 True 否 False"""
+        return not self.r_qsize()
+
+    def r_full(self):
+        """判断队列是否满。是 True 否 False (不可靠的)"""
+
+        return  0 < self._max_size == self.r_qsize()
 
 
     def r_get(self,block=True,timeout=None):
         """
         参见 python Queue.get()
         """
+        self._not_empty.acquire()
         try:
             if not block:
                 if not self.r_qsize():
                     raise RedisQueueEmpty
+                else:
+                    return self._get()[-1]
 
             elif timeout is None:
                    return self._get()[-1] # 堵塞,直到有为止
@@ -77,14 +96,18 @@ class RedisQueue:
         except Exception as e:
             raise e
 
+        finally:
+            self._not_empty.release()
+
     def r_put(self, item, block=True, timeout=None):
         """
         参见 python Queue.put()
         """
+        self._not_full.acquire()
         try:
             if self._max_size > 0:
                 if not block:
-                    if self.r_qsize() >= self._max_size:
+                    if self.r_qsize() == self._max_size:
                         raise RedisQueueFull
 
                 elif timeout is None:
@@ -100,12 +123,14 @@ class RedisQueue:
                         if remaining <= 0.0:
                             raise RedisQueueTimeOut
                         self._not_full.wait(remaining)
-                    return self._put(item)
-            else:
-                return self._put(item)
+
+            return self._put(item)
 
         except Exception as e:
             raise e
+
+        finally:
+            self._not_full.release()
 
 class LifoRedisQueue(RedisQueue):
     """后进先出队列"""
